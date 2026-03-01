@@ -3141,6 +3141,30 @@ impl App {
             AppEvent::StatusLineSetupCancelled => {
                 self.chat_widget.cancel_status_line_setup();
             }
+            AppEvent::UpdateMiniGameKind(kind) => {
+                self.chat_widget.set_mini_game_kind(kind);
+                let key = match kind {
+                    codex_core::config::types::MiniGameKind::Connect4 => "connect4",
+                    codex_core::config::types::MiniGameKind::Tetris => "tetris",
+                    codex_core::config::types::MiniGameKind::Wordle => "wordle",
+                    codex_core::config::types::MiniGameKind::SubwaySurfer => "subway_surfer",
+                    codex_core::config::types::MiniGameKind::Snake => "snake",
+                    codex_core::config::types::MiniGameKind::FlappyBird => "flappy_bird",
+                };
+                let edit = ConfigEdit::SetPath {
+                    segments: vec!["tui".to_string(), "mini_game".to_string()],
+                    value: key.to_string().into(),
+                };
+                if let Err(err) = ConfigEditsBuilder::new(&self.config.codex_home)
+                    .with_edits([edit])
+                    .apply()
+                    .await
+                {
+                    tracing::error!(error = %err, "failed to persist mini-game selection");
+                    self.chat_widget
+                        .add_error_message(format!("Failed to save mini-game selection: {err}"));
+                }
+            }
             AppEvent::SyntaxThemeSelected { name } => {
                 let edit = codex_core::config::edit::syntax_theme_edit(&name);
                 let apply_result = ConfigEditsBuilder::new(&self.config.codex_home)

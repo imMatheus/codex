@@ -9,6 +9,7 @@ use crate::config::types::McpServerDisabledReason;
 use crate::config::types::McpServerTransportConfig;
 use crate::config::types::MemoriesConfig;
 use crate::config::types::MemoriesToml;
+use crate::config::types::MiniGameKind;
 use crate::config::types::ModelAvailabilityNuxConfig;
 use crate::config::types::Notice;
 use crate::config::types::NotificationMethod;
@@ -298,6 +299,9 @@ pub struct Config {
 
     /// Syntax highlighting theme override (kebab-case name).
     pub tui_theme: Option<String>,
+
+    /// Which mini-game to play while waiting for the agent.
+    pub tui_mini_game: MiniGameKind,
 
     /// The directory that should be treated as the current working directory
     /// for the session. All relative paths inside the business-logic layer are
@@ -2229,6 +2233,7 @@ impl Config {
                 .unwrap_or_default(),
             tui_status_line: cfg.tui.as_ref().and_then(|t| t.status_line.clone()),
             tui_theme: cfg.tui.as_ref().and_then(|t| t.theme.clone()),
+            tui_mini_game: cfg.tui.as_ref().map(|t| t.mini_game).unwrap_or_default(),
             otel: {
                 let t: OtelConfigToml = cfg.otel.unwrap_or_default();
                 let log_user_prompt = t.log_user_prompt.unwrap_or(false);
@@ -2575,6 +2580,7 @@ phase_2_model = "gpt-5"
                         ("gpt-foo".to_string(), 2),
                     ]),
                 },
+                mini_game: MiniGameKind::default(),
             }
         );
     }
@@ -2729,6 +2735,7 @@ theme = "dracula"
                 status_line: None,
                 theme: None,
                 model_availability_nux: ModelAvailabilityNuxConfig::default(),
+                mini_game: MiniGameKind::default(),
             }
         );
     }
@@ -4946,6 +4953,7 @@ model_verbosity = "high"
                 tui_alternate_screen: AltScreenMode::Auto,
                 tui_status_line: None,
                 tui_theme: None,
+                tui_mini_game: MiniGameKind::default(),
                 otel: OtelConfig::default(),
             },
             o3_profile_config
@@ -5074,6 +5082,7 @@ model_verbosity = "high"
             tui_alternate_screen: AltScreenMode::Auto,
             tui_status_line: None,
             tui_theme: None,
+            tui_mini_game: MiniGameKind::default(),
             otel: OtelConfig::default(),
         };
 
@@ -5200,6 +5209,7 @@ model_verbosity = "high"
             tui_alternate_screen: AltScreenMode::Auto,
             tui_status_line: None,
             tui_theme: None,
+            tui_mini_game: MiniGameKind::default(),
             otel: OtelConfig::default(),
         };
 
@@ -5312,6 +5322,7 @@ model_verbosity = "high"
             tui_alternate_screen: AltScreenMode::Auto,
             tui_status_line: None,
             tui_theme: None,
+            tui_mini_game: MiniGameKind::default(),
             otel: OtelConfig::default(),
         };
 

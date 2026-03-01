@@ -446,6 +446,9 @@ pub(crate) enum AppEvent {
     SyntaxThemeSelected {
         name: String,
     },
+
+    /// Update the configured mini-game kind and persist to config.
+    UpdateMiniGameKind(codex_core::config::types::MiniGameKind),
 }
 
 /// The exit strategy requested by the UI layer.

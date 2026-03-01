@@ -364,6 +364,9 @@
             "memory_tool": {
               "type": "boolean"
             },
+            "mini_games": {
+              "type": "boolean"
+            },
             "multi_agent": {
               "type": "boolean"
             },
@@ -658,6 +661,18 @@
         }
       },
       "type": "object"
+    },
+    "MiniGameKind": {
+      "description": "Which mini-game to play while waiting for the agent.",
+      "enum": [
+        "connect4",
+        "tetris",
+        "wordle",
+        "subway_surfer",
+        "snake",
+        "flappy_bird"
+      ],
+      "type": "string"
     },
     "ModelAvailabilityNuxConfig": {
       "additionalProperties": {
@@ -1428,6 +1443,15 @@
           "description": "Enable animations (welcome screen, shimmer effects, spinners). Defaults to `true`.",
           "type": "boolean"
         },
+        "mini_game": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/MiniGameKind"
+            }
+          ],
+          "default": "connect4",
+          "description": "Which mini-game to play while waiting for the agent. Defaults to `connect4`."
+        },
         "model_availability_nux": {
           "allOf": [
             {
@@ -1710,6 +1734,9 @@
           "type": "boolean"
         },
         "memory_tool": {
+          "type": "boolean"
+        },
+        "mini_games": {
           "type": "boolean"
         },
         "multi_agent": {

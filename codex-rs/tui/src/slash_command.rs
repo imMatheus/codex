@@ -50,6 +50,7 @@ pub enum SlashCommand {
     Clean,
     Clear,
     Personality,
+    Game,
     Realtime,
     Settings,
     TestApproval,
@@ -89,6 +90,7 @@ impl SlashCommand {
             SlashCommand::MemoryUpdate => "DO NOT USE",
             SlashCommand::Model => "choose what model and reasoning effort to use",
             SlashCommand::Personality => "choose a communication style for Codex",
+            SlashCommand::Game => "choose which mini-game to play while waiting",
             SlashCommand::Realtime => "toggle realtime voice mode (experimental)",
             SlashCommand::Settings => "configure realtime microphone/speaker",
             SlashCommand::Plan => "switch to Plan mode",
@@ -147,7 +149,8 @@ impl SlashCommand {
             | SlashCommand::Clear
             | SlashCommand::Logout
             | SlashCommand::MemoryDrop
-            | SlashCommand::MemoryUpdate => false,
+            | SlashCommand::MemoryUpdate
+            | SlashCommand::Game => false,
             SlashCommand::Diff
             | SlashCommand::Copy
             | SlashCommand::Rename

@@ -1625,6 +1625,8 @@ async fn make_chatwidget_manual(
         cfg.model = Some(model.to_string());
     }
     let prevent_idle_sleep = cfg.features.enabled(Feature::PreventIdleSleep);
+    let mini_games_enabled = cfg.features.enabled(Feature::MiniGames);
+    let mini_game_kind = cfg.tui_mini_game;
     let otel_manager = test_otel_manager(&cfg, resolved_model.as_str());
     let mut bottom = BottomPane::new(BottomPaneParams {
         app_event_tx: app_event_tx.clone(),
@@ -1737,6 +1739,10 @@ async fn make_chatwidget_manual(
         external_editor_state: ExternalEditorState::Closed,
         realtime_conversation: RealtimeConversationUiState::default(),
         last_rendered_user_message_event: None,
+        game_overlay: None,
+        mini_game_kind,
+        mini_games_enabled,
+        ctrl_c_opened_game_picker_for_turn: false,
     };
     widget.set_model(&resolved_model);
     (widget, rx, op_rx)
@@ -3240,6 +3246,117 @@ fn queued_message_edit_binding_mapping_covers_special_terminals() {
     assert_eq!(
         queued_message_edit_binding_for_terminal(TerminalName::Iterm2),
         crate::key_hint::alt(KeyCode::Up)
+    );
+}
+
+#[test]
+fn game_picker_shortcut_accepts_ctrl_shift_g() {
+    assert!(is_game_picker_shortcut(KeyEvent::new(
+        KeyCode::Char('g'),
+        KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+    )));
+    assert!(is_game_picker_shortcut(KeyEvent::new(
+        KeyCode::Char('G'),
+        KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+    )));
+}
+
+#[test]
+fn game_picker_shortcut_accepts_alt_g_for_compatibility() {
+    assert!(is_game_picker_shortcut(KeyEvent::new(
+        KeyCode::Char('g'),
+        KeyModifiers::ALT,
+    )));
+    assert!(is_game_picker_shortcut(KeyEvent::new(
+        KeyCode::Char('G'),
+        KeyModifiers::ALT,
+    )));
+}
+
+#[test]
+fn game_picker_shortcut_accepts_option_g_fallback_char() {
+    assert!(is_game_picker_shortcut(KeyEvent::new(
+        KeyCode::Char('©'),
+        KeyModifiers::NONE,
+    )));
+}
+
+#[tokio::test]
+async fn option_g_fallback_dismisses_game_overlay_and_opens_game_picker() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(None).await;
+    chat.game_overlay = Some(crate::games::GameOverlay::new(
+        codex_core::config::types::MiniGameKind::Connect4,
+        chat.frame_requester.clone(),
+    ));
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('©'), KeyModifiers::NONE));
+
+    assert!(
+        chat.game_overlay.is_none(),
+        "game should close before opening picker"
+    );
+    let popup = render_bottom_popup(&chat, 80);
+    assert!(
+        popup.contains("Select Mini-Game"),
+        "expected game picker popup after Option+G fallback, got:\n{popup}"
+    );
+}
+
+#[tokio::test]
+async fn ctrl_c_with_game_overlay_resets_to_open_picker_after_game_selection() {
+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(None).await;
+    chat.mini_games_enabled = true;
+    chat.on_task_started();
+    assert!(
+        chat.game_overlay.is_some(),
+        "game should be visible during turn"
+    );
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL));
+
+    assert!(
+        chat.game_overlay.is_none(),
+        "first Ctrl+C should hide the active game"
+    );
+    assert!(
+        matches!(op_rx.try_recv(), Err(TryRecvError::Empty)),
+        "first Ctrl+C should not interrupt the turn"
+    );
+    let popup = render_bottom_popup(&chat, 80);
+    assert!(
+        popup.contains("Select Mini-Game"),
+        "expected game picker popup after first Ctrl+C, got:\n{popup}"
+    );
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let mut selected_kind = None;
+    while let Ok(event) = rx.try_recv() {
+        if let AppEvent::UpdateMiniGameKind(kind) = event {
+            selected_kind = Some(kind);
+            break;
+        }
+    }
+    assert_eq!(
+        selected_kind,
+        Some(codex_core::config::types::MiniGameKind::Connect4),
+        "expected selecting the default game row to emit UpdateMiniGameKind"
+    );
+    chat.set_mini_game_kind(selected_kind.expect("mini-game selection event"));
+    assert!(
+        chat.game_overlay.is_some(),
+        "selecting a game should restore the game overlay during the running turn"
+    );
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL));
+    assert!(
+        matches!(op_rx.try_recv(), Err(TryRecvError::Empty)),
+        "after selecting a game, Ctrl+C should open picker again instead of interrupting"
+    );
+    assert!(chat.game_overlay.is_none());
+    let popup_again = render_bottom_popup(&chat, 80);
+    assert!(
+        popup_again.contains("Select Mini-Game"),
+        "expected game picker popup after second Ctrl+C, got:\n{popup_again}"
     );
 }
 

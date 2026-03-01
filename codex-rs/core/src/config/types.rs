@@ -675,6 +675,19 @@ pub struct ModelAvailabilityNuxConfig {
     pub shown_count: HashMap<String, u32>,
 }
 
+/// Which mini-game to play while waiting for the agent.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MiniGameKind {
+    #[default]
+    Connect4,
+    Tetris,
+    Wordle,
+    SubwaySurfer,
+    Snake,
+    FlappyBird,
+}
+
 /// Collection of settings that are specific to the TUI.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema)]
 #[schemars(deny_unknown_fields)]
@@ -728,6 +741,11 @@ pub struct Tui {
     /// Startup tooltip availability NUX state persisted by the TUI.
     #[serde(default)]
     pub model_availability_nux: ModelAvailabilityNuxConfig,
+
+    /// Which mini-game to play while waiting for the agent.
+    /// Defaults to `connect4`.
+    #[serde(default)]
+    pub mini_game: MiniGameKind,
 }
 
 const fn default_true() -> bool {

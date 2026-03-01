@@ -195,6 +195,37 @@ fn queued_message_edit_binding_for_terminal(terminal_name: TerminalName) -> KeyB
     }
 }
 
+/// Return whether a key event should dismiss the active mini-game and open the picker.
+///
+/// Primary shortcut: Ctrl+Shift+G.
+/// Compatibility: Alt/Option+G (including terminals that encode Option+G as `©`).
+fn is_game_picker_shortcut(key_event: KeyEvent) -> bool {
+    if !matches!(key_event.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
+        return false;
+    }
+
+    match key_event.code {
+        KeyCode::Char(c)
+            if key_event.modifiers == (KeyModifiers::CONTROL | KeyModifiers::SHIFT)
+                && c.eq_ignore_ascii_case(&'g') =>
+        {
+            true
+        }
+        KeyCode::Char(c)
+            if key_event.modifiers.contains(KeyModifiers::ALT) && c.eq_ignore_ascii_case(&'g') =>
+        {
+            true
+        }
+        KeyCode::Char('©')
+            if !key_event.modifiers.contains(KeyModifiers::ALT)
+                && !key_event.modifiers.contains(KeyModifiers::CONTROL) =>
+        {
+            true
+        }
+        _ => false,
+    }
+}
+
 use crate::app_event::AppEvent;
 use crate::app_event::ConnectorsSnapshot;
 use crate::app_event::ExitMode;
@@ -679,6 +710,15 @@ pub(crate) struct ChatWidget {
     external_editor_state: ExternalEditorState,
     realtime_conversation: RealtimeConversationUiState,
     last_rendered_user_message_event: Option<RenderedUserMessageEvent>,
+    /// Active game overlay shown while the agent is processing (if mini_games feature is enabled).
+    game_overlay: Option<crate::games::GameOverlay>,
+    /// Which mini-game type is configured.
+    mini_game_kind: codex_core::config::types::MiniGameKind,
+    /// Whether the mini-games feature is enabled.
+    mini_games_enabled: bool,
+    /// Tracks whether Ctrl+C has already opened the game picker for the active turn.
+    /// The next Ctrl+C should interrupt the running turn.
+    ctrl_c_opened_game_picker_for_turn: bool,
 }
 
 /// Snapshot of active-cell state that affects transcript overlay rendering.
@@ -872,6 +912,10 @@ impl ChatWidget {
     fn update_task_running_state(&mut self) {
         self.bottom_pane
             .set_task_running(self.agent_turn_running || self.mcp_startup_status.is_some());
+        if !self.agent_turn_running {
+            self.game_overlay = None;
+            self.ctrl_c_opened_game_picker_for_turn = false;
+        }
     }
 
     fn restore_reasoning_status_header(&mut self) {
@@ -1400,6 +1444,7 @@ impl ChatWidget {
 
     fn on_task_started(&mut self) {
         self.agent_turn_running = true;
+        self.ctrl_c_opened_game_picker_for_turn = false;
         self.turn_sleep_inhibitor.set_turn_running(true);
         self.saw_plan_update_this_turn = false;
         self.saw_plan_item_this_turn = false;
@@ -1419,10 +1464,20 @@ impl ChatWidget {
         self.set_status_header(String::from("Working"));
         self.full_reasoning_buffer.clear();
         self.reasoning_buffer.clear();
+        // Start the mini-game overlay if the feature is enabled.
+        if self.mini_games_enabled && self.game_overlay.is_none() {
+            self.game_overlay = Some(crate::games::GameOverlay::new(
+                self.mini_game_kind,
+                self.frame_requester.clone(),
+            ));
+        }
         self.request_redraw();
     }
 
     fn on_task_complete(&mut self, last_agent_message: Option<String>, from_replay: bool) {
+        // Immediately dismiss the game overlay.
+        self.game_overlay = None;
+
         if let Some(message) = last_agent_message.as_ref()
             && !message.trim().is_empty()
         {
@@ -1699,6 +1754,7 @@ impl ChatWidget {
         self.finalize_active_cell_as_failed();
         // Reset running state and clear streaming buffers.
         self.agent_turn_running = false;
+        self.ctrl_c_opened_game_picker_for_turn = false;
         self.turn_sleep_inhibitor.set_turn_running(false);
         self.update_task_running_state();
         self.running_commands.clear();
@@ -2295,6 +2351,10 @@ impl ChatWidget {
 
     pub(crate) fn pre_draw_tick(&mut self) {
         self.bottom_pane.pre_draw_tick();
+        // Advance game state on each draw tick (needed for real-time mini-games).
+        if let Some(game) = &mut self.game_overlay {
+            game.tick();
+        }
     }
 
     /// Handle completion of an `AgentMessage` turn item.
@@ -2780,6 +2840,8 @@ impl ChatWidget {
         let mut config = config;
         config.model = model.clone();
         let prevent_idle_sleep = config.features.enabled(Feature::PreventIdleSleep);
+        let mini_games_enabled = config.features.enabled(Feature::MiniGames);
+        let mini_game_kind = config.tui_mini_game;
         let mut rng = rand::rng();
         let placeholder = PLACEHOLDERS[rng.random_range(0..PLACEHOLDERS.len())].to_string();
         let codex_op_tx = spawn_agent(config.clone(), app_event_tx.clone(), thread_manager);
@@ -2899,6 +2961,10 @@ impl ChatWidget {
             external_editor_state: ExternalEditorState::Closed,
             realtime_conversation: RealtimeConversationUiState::default(),
             last_rendered_user_message_event: None,
+            game_overlay: None,
+            mini_game_kind,
+            mini_games_enabled,
+            ctrl_c_opened_game_picker_for_turn: false,
         };
 
         widget.prefetch_rate_limits();
@@ -2960,6 +3026,8 @@ impl ChatWidget {
         let mut config = config;
         config.model = model.clone();
         let prevent_idle_sleep = config.features.enabled(Feature::PreventIdleSleep);
+        let mini_games_enabled = config.features.enabled(Feature::MiniGames);
+        let mini_game_kind = config.tui_mini_game;
         let mut rng = rand::rng();
         let placeholder = PLACEHOLDERS[rng.random_range(0..PLACEHOLDERS.len())].to_string();
 
@@ -3078,6 +3146,10 @@ impl ChatWidget {
             external_editor_state: ExternalEditorState::Closed,
             realtime_conversation: RealtimeConversationUiState::default(),
             last_rendered_user_message_event: None,
+            game_overlay: None,
+            mini_game_kind,
+            mini_games_enabled,
+            ctrl_c_opened_game_picker_for_turn: false,
         };
 
         widget.prefetch_rate_limits();
@@ -3126,6 +3198,8 @@ impl ChatWidget {
         } = common;
         let model = model.filter(|m| !m.trim().is_empty());
         let prevent_idle_sleep = config.features.enabled(Feature::PreventIdleSleep);
+        let mini_games_enabled = config.features.enabled(Feature::MiniGames);
+        let mini_game_kind = config.tui_mini_game;
         let mut rng = rand::rng();
         let placeholder = PLACEHOLDERS[rng.random_range(0..PLACEHOLDERS.len())].to_string();
 
@@ -3246,6 +3320,10 @@ impl ChatWidget {
             external_editor_state: ExternalEditorState::Closed,
             realtime_conversation: RealtimeConversationUiState::default(),
             last_rendered_user_message_event: None,
+            game_overlay: None,
+            mini_game_kind,
+            mini_games_enabled,
+            ctrl_c_opened_game_picker_for_turn: false,
         };
 
         widget.prefetch_rate_limits();
@@ -3336,6 +3414,53 @@ impl ChatWidget {
                 self.quit_shortcut_key = None;
             }
             _ => {}
+        }
+
+        // Ctrl+Shift+G (or Alt/Option+G) dismisses the game and opens the game picker.
+        if self.game_overlay.is_some() && is_game_picker_shortcut(key_event) {
+            self.game_overlay = None;
+            self.open_game_picker();
+            self.request_redraw();
+            return;
+        }
+
+        // Route game-specific keys to the active game overlay.
+        if let Some(game) = &mut self.game_overlay {
+            match key_event.kind {
+                KeyEventKind::Press | KeyEventKind::Repeat => match key_event.code {
+                    KeyCode::Left
+                    | KeyCode::Right
+                    | KeyCode::Up
+                    | KeyCode::Down
+                    | KeyCode::Enter
+                    | KeyCode::Backspace
+                    | KeyCode::Char(_) => {
+                        let is_arrow = matches!(
+                            key_event.code,
+                            KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down
+                        );
+                        if game.handle_key_event(key_event) {
+                            self.request_redraw();
+                            return;
+                        }
+                        // While a game is active, arrow keys belong to the game even if a
+                        // specific game ignores repeat events.
+                        if is_arrow {
+                            return;
+                        }
+                    }
+                    _ => {}
+                },
+                KeyEventKind::Release => match key_event.code {
+                    KeyCode::Up | KeyCode::Down => {
+                        if game.handle_key_event(key_event) {
+                            return;
+                        }
+                        return;
+                    }
+                    _ => {}
+                },
+            }
         }
 
         if key_event.kind == KeyEventKind::Press
@@ -3578,6 +3703,17 @@ impl ChatWidget {
             }
             SlashCommand::Personality => {
                 self.open_personality_popup();
+            }
+            SlashCommand::Game => {
+                if !self.mini_games_enabled {
+                    self.add_info_message(
+                        "Mini-games are not enabled. Enable them in /experimental first."
+                            .to_string(),
+                        None,
+                    );
+                } else {
+                    self.open_game_picker();
+                }
             }
             SlashCommand::Plan => {
                 if !self.collaboration_modes_enabled() {
@@ -5469,6 +5605,86 @@ impl ChatWidget {
             ..Default::default()
         });
     }
+    fn open_game_picker(&mut self) {
+        use codex_core::config::types::MiniGameKind;
+
+        let current = self.mini_game_kind;
+        let items = vec![
+            SelectionItem {
+                name: "Connect 4".to_string(),
+                description: Some("Classic 4-in-a-row game against AI".to_string()),
+                is_current: current == MiniGameKind::Connect4,
+                actions: vec![Box::new(|tx| {
+                    tx.send(AppEvent::UpdateMiniGameKind(MiniGameKind::Connect4));
+                })],
+                dismiss_on_select: true,
+                ..Default::default()
+            },
+            SelectionItem {
+                name: "Tetris".to_string(),
+                description: Some("Classic falling blocks puzzle".to_string()),
+                is_current: current == MiniGameKind::Tetris,
+                actions: vec![Box::new(|tx| {
+                    tx.send(AppEvent::UpdateMiniGameKind(MiniGameKind::Tetris));
+                })],
+                dismiss_on_select: true,
+                ..Default::default()
+            },
+            SelectionItem {
+                name: "Wordle".to_string(),
+                description: Some("Guess the 5-letter word in 6 tries".to_string()),
+                is_current: current == MiniGameKind::Wordle,
+                actions: vec![Box::new(|tx| {
+                    tx.send(AppEvent::UpdateMiniGameKind(MiniGameKind::Wordle));
+                })],
+                dismiss_on_select: true,
+                ..Default::default()
+            },
+            SelectionItem {
+                name: "Subway Surfer".to_string(),
+                description: Some("Endless runner — dodge trains, collect coins".to_string()),
+                is_current: current == MiniGameKind::SubwaySurfer,
+                actions: vec![Box::new(|tx| {
+                    tx.send(AppEvent::UpdateMiniGameKind(MiniGameKind::SubwaySurfer));
+                })],
+                dismiss_on_select: true,
+                ..Default::default()
+            },
+            SelectionItem {
+                name: "Snake".to_string(),
+                description: Some("Grow longer without hitting yourself or the walls".to_string()),
+                is_current: current == MiniGameKind::Snake,
+                actions: vec![Box::new(|tx| {
+                    tx.send(AppEvent::UpdateMiniGameKind(MiniGameKind::Snake));
+                })],
+                dismiss_on_select: true,
+                ..Default::default()
+            },
+            SelectionItem {
+                name: "Flappy Bird".to_string(),
+                description: Some("Flap through the pipes — don't crash!".to_string()),
+                is_current: current == MiniGameKind::FlappyBird,
+                actions: vec![Box::new(|tx| {
+                    tx.send(AppEvent::UpdateMiniGameKind(MiniGameKind::FlappyBird));
+                })],
+                dismiss_on_select: true,
+                ..Default::default()
+            },
+        ];
+
+        let mut header = ColumnRenderable::new();
+        header.push(Line::from("Select Mini-Game".bold()));
+        header.push(Line::from(
+            "Choose a game to play while the agent is working.".dim(),
+        ));
+
+        self.bottom_pane.show_selection_view(SelectionViewParams {
+            header: Box::new(header),
+            footer_hint: Some(standard_popup_hint_line()),
+            items,
+            ..Default::default()
+        });
+    }
 
     fn model_menu_header(&self, title: &str, subtitle: &str) -> Box<dyn Renderable> {
         let title = title.to_string();
@@ -6753,6 +6969,9 @@ impl ChatWidget {
                     ),
             );
         }
+        if feature == Feature::MiniGames {
+            self.set_mini_games_enabled(enabled);
+        }
     }
 
     pub(crate) fn set_full_access_warning_acknowledged(&mut self, acknowledged: bool) {
@@ -7378,6 +7597,18 @@ impl ChatWidget {
     /// If the same quit shortcut is pressed again before expiry, this requests a shutdown-first
     /// quit.
     fn on_ctrl_c(&mut self) {
+        if self.game_overlay.is_some()
+            && self.agent_turn_running
+            && !self.ctrl_c_opened_game_picker_for_turn
+            && self.bottom_pane.no_modal_or_popup_active()
+        {
+            self.ctrl_c_opened_game_picker_for_turn = true;
+            self.game_overlay = None;
+            self.open_game_picker();
+            self.request_redraw();
+            return;
+        }
+
         let key = key_hint::ctrl(KeyCode::Char('c'));
         let modal_or_popup_active = !self.bottom_pane.no_modal_or_popup_active();
         if self.bottom_pane.on_ctrl_c() == CancellationEvent::Handled {
@@ -7395,6 +7626,9 @@ impl ChatWidget {
 
         if !DOUBLE_PRESS_QUIT_SHORTCUT_ENABLED {
             if self.is_cancellable_work_active() {
+                self.game_overlay = None;
+                self.ctrl_c_opened_game_picker_for_turn = false;
+                self.request_redraw();
                 self.submit_op(Op::Interrupt);
             } else {
                 self.request_quit_without_confirmation();
@@ -7412,6 +7646,9 @@ impl ChatWidget {
         self.arm_quit_shortcut(key);
 
         if self.is_cancellable_work_active() {
+            self.game_overlay = None;
+            self.ctrl_c_opened_game_picker_for_turn = false;
+            self.request_redraw();
             self.submit_op(Op::Interrupt);
         }
     }
@@ -7907,6 +8144,30 @@ impl ChatWidget {
         self.token_info = None;
     }
 
+    /// Update the configured mini-game kind. If the agent is currently running,
+    /// (re-)creates the game overlay with the new game.
+    pub(crate) fn set_mini_game_kind(&mut self, kind: codex_core::config::types::MiniGameKind) {
+        self.mini_game_kind = kind;
+        // After choosing a game from the picker, treat the next Ctrl+C as a fresh
+        // "open picker" request again instead of an immediate interrupt.
+        self.ctrl_c_opened_game_picker_for_turn = false;
+        if self.mini_games_enabled && self.agent_turn_running {
+            self.game_overlay = Some(crate::games::GameOverlay::new(
+                kind,
+                self.frame_requester.clone(),
+            ));
+            self.request_redraw();
+        }
+    }
+
+    /// Update mini-games enabled state (called when feature flag is toggled).
+    pub(crate) fn set_mini_games_enabled(&mut self, enabled: bool) {
+        self.mini_games_enabled = enabled;
+        if !enabled {
+            self.game_overlay = None;
+        }
+    }
+
     fn as_renderable(&self) -> RenderableItem<'_> {
         let active_cell_renderable = match &self.active_cell {
             Some(cell) => RenderableItem::Borrowed(cell).inset(Insets::tlbr(1, 0, 0, 0)),
@@ -7914,6 +8175,13 @@ impl ChatWidget {
         };
         let mut flex = FlexRenderable::new();
         flex.push(1, active_cell_renderable);
+        // Show game overlay in a split view when the agent is working.
+        if let Some(game) = &self.game_overlay {
+            flex.push(
+                1,
+                RenderableItem::Borrowed(game as &dyn Renderable).inset(Insets::tlbr(1, 0, 0, 0)),
+            );
+        }
         flex.push(
             0,
             RenderableItem::Borrowed(&self.bottom_pane).inset(Insets::tlbr(1, 0, 0, 0)),

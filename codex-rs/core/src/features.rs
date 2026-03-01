@@ -153,6 +153,8 @@ pub enum Feature {
     ResponsesWebsockets,
     /// Enable Responses API websocket v2 mode.
     ResponsesWebsocketsV2,
+    /// Show an interactive mini-game while the agent processes a turn.
+    MiniGames,
 }
 
 impl Feature {
@@ -692,6 +694,16 @@ pub const FEATURES: &[FeatureSpec] = &[
         id: Feature::ResponsesWebsocketsV2,
         key: "responses_websockets_v2",
         stage: Stage::UnderDevelopment,
+        default_enabled: false,
+    },
+    FeatureSpec {
+        id: Feature::MiniGames,
+        key: "mini_games",
+        stage: Stage::Experimental {
+            name: "Mini-games",
+            menu_description: "Play a mini-game while waiting for the agent to respond.",
+            announcement: "NEW: Mini-games are now available in /experimental. Enable it to play while Codex works!",
+        },
         default_enabled: false,
     },
 ];
