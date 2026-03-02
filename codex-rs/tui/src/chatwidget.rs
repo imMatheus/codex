@@ -5611,11 +5611,11 @@ impl ChatWidget {
         let current = self.mini_game_kind;
         let items = vec![
             SelectionItem {
-                name: "Connect 4".to_string(),
-                description: Some("Classic 4-in-a-row game against AI".to_string()),
-                is_current: current == MiniGameKind::Connect4,
+                name: "Flappy Bird".to_string(),
+                description: Some("Flap through the pipes — don't crash!".to_string()),
+                is_current: current == MiniGameKind::FlappyBird,
                 actions: vec![Box::new(|tx| {
-                    tx.send(AppEvent::UpdateMiniGameKind(MiniGameKind::Connect4));
+                    tx.send(AppEvent::UpdateMiniGameKind(MiniGameKind::FlappyBird));
                 })],
                 dismiss_on_select: true,
                 ..Default::default()
@@ -5641,6 +5641,16 @@ impl ChatWidget {
                 ..Default::default()
             },
             SelectionItem {
+                name: "Connect 4".to_string(),
+                description: Some("Classic 4-in-a-row game against AI".to_string()),
+                is_current: current == MiniGameKind::Connect4,
+                actions: vec![Box::new(|tx| {
+                    tx.send(AppEvent::UpdateMiniGameKind(MiniGameKind::Connect4));
+                })],
+                dismiss_on_select: true,
+                ..Default::default()
+            },
+            SelectionItem {
                 name: "Subway Surfer".to_string(),
                 description: Some("Endless runner — dodge trains, collect coins".to_string()),
                 is_current: current == MiniGameKind::SubwaySurfer,
@@ -5656,16 +5666,6 @@ impl ChatWidget {
                 is_current: current == MiniGameKind::Snake,
                 actions: vec![Box::new(|tx| {
                     tx.send(AppEvent::UpdateMiniGameKind(MiniGameKind::Snake));
-                })],
-                dismiss_on_select: true,
-                ..Default::default()
-            },
-            SelectionItem {
-                name: "Flappy Bird".to_string(),
-                description: Some("Flap through the pipes — don't crash!".to_string()),
-                is_current: current == MiniGameKind::FlappyBird,
-                actions: vec![Box::new(|tx| {
-                    tx.send(AppEvent::UpdateMiniGameKind(MiniGameKind::FlappyBird));
                 })],
                 dismiss_on_select: true,
                 ..Default::default()

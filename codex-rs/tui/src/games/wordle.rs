@@ -38,7 +38,7 @@ pub(crate) struct WordleGame {
     current_input: Vec<char>,
     won: bool,
     game_over: bool,
-    word_index: usize,
+    rng: u32,
     message: Option<&'static str>,
 }
 
@@ -50,17 +50,30 @@ impl WordleGame {
             current_input: Vec::new(),
             won: false,
             game_over: false,
-            word_index: 0,
+            rng: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as u32)
+                .unwrap_or(0xDEAD)
+                | 1,
             message: None,
         };
         game.pick_word();
         game
     }
 
+    fn rand_u32(&mut self) -> u32 {
+        let mut s = self.rng;
+        s ^= s << 13;
+        s ^= s >> 17;
+        s ^= s << 5;
+        self.rng = s;
+        s
+    }
+
     fn pick_word(&mut self) {
         let words = word_list();
-        let word = words[self.word_index % words.len()];
-        self.word_index += 1;
+        let idx = (self.rand_u32() as usize) % words.len();
+        let word = words[idx];
         let mut chars = [' '; WORD_LEN];
         for (i, ch) in word.chars().take(WORD_LEN).enumerate() {
             chars[i] = ch;
