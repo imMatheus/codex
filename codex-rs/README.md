@@ -89,6 +89,23 @@ codex --sandbox danger-full-access
 
 The same setting can be persisted in `~/.codex/config.toml` via the top-level `sandbox_mode = "MODE"` key, e.g. `sandbox_mode = "workspace-write"`.
 
+## Mini-Games
+
+This branch includes built-in mini-games you can play while the agent is working on a task. Press **Ctrl+C** during an agent turn to open the game picker.
+
+Available games:
+
+| Game | Description |
+|------|-------------|
+| **Flappy Bird** | Flap through pipes without crashing. Press Space or Up to flap. |
+| **Tetris** | Classic falling blocks puzzle. |
+| **Wordle** | Guess a random 5-letter word in 6 tries. Letters are colored green (correct position), yellow (wrong position), or gray (not in word). |
+| **Connect 4** | 4-in-a-row against an AI opponent powered by minimax with alpha-beta pruning (searches 10 moves deep). |
+| **Subway Surfer** | Endless runner — dodge trains and collect coins. |
+| **Snake** | Grow longer without hitting yourself or the walls. |
+
+To enable mini-games, open the `/experimental` menu inside Codex and toggle **Mini-games** on. Then press **Ctrl+C** while the agent is working to open the game picker.
+
 ## Code Organization
 
 This folder is the root of a Cargo workspace. It contains quite a bit of experimental code, but here are the key crates:

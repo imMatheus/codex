@@ -2351,8 +2351,9 @@ impl ChatWidget {
 
     pub(crate) fn pre_draw_tick(&mut self) {
         self.bottom_pane.pre_draw_tick();
-        // Advance game state on each draw tick (needed for real-time mini-games).
+        // Pause the game when a modal/popup (e.g. approval prompt) needs focus.
         if let Some(game) = &mut self.game_overlay {
+            game.set_paused(!self.bottom_pane.no_modal_or_popup_active());
             game.tick();
         }
     }
@@ -3424,42 +3425,45 @@ impl ChatWidget {
             return;
         }
 
-        // Route game-specific keys to the active game overlay.
+        // Route game-specific keys to the active game overlay (skip when paused).
         if let Some(game) = &mut self.game_overlay {
-            match key_event.kind {
-                KeyEventKind::Press | KeyEventKind::Repeat => match key_event.code {
-                    KeyCode::Left
-                    | KeyCode::Right
-                    | KeyCode::Up
-                    | KeyCode::Down
-                    | KeyCode::Enter
-                    | KeyCode::Backspace
-                    | KeyCode::Char(_) => {
-                        let is_arrow = matches!(
-                            key_event.code,
-                            KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down
-                        );
-                        if game.handle_key_event(key_event) {
-                            self.request_redraw();
+            game.set_paused(!self.bottom_pane.no_modal_or_popup_active());
+            if !game.is_paused() {
+                match key_event.kind {
+                    KeyEventKind::Press | KeyEventKind::Repeat => match key_event.code {
+                        KeyCode::Left
+                        | KeyCode::Right
+                        | KeyCode::Up
+                        | KeyCode::Down
+                        | KeyCode::Enter
+                        | KeyCode::Backspace
+                        | KeyCode::Char(_) => {
+                            let is_arrow = matches!(
+                                key_event.code,
+                                KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down
+                            );
+                            if game.handle_key_event(key_event) {
+                                self.request_redraw();
+                                return;
+                            }
+                            // While a game is active, arrow keys belong to the game even if a
+                            // specific game ignores repeat events.
+                            if is_arrow {
+                                return;
+                            }
+                        }
+                        _ => {}
+                    },
+                    KeyEventKind::Release => match key_event.code {
+                        KeyCode::Up | KeyCode::Down => {
+                            if game.handle_key_event(key_event) {
+                                return;
+                            }
                             return;
                         }
-                        // While a game is active, arrow keys belong to the game even if a
-                        // specific game ignores repeat events.
-                        if is_arrow {
-                            return;
-                        }
-                    }
-                    _ => {}
-                },
-                KeyEventKind::Release => match key_event.code {
-                    KeyCode::Up | KeyCode::Down => {
-                        if game.handle_key_event(key_event) {
-                            return;
-                        }
-                        return;
-                    }
-                    _ => {}
-                },
+                        _ => {}
+                    },
+                }
             }
         }
 
@@ -5666,6 +5670,16 @@ impl ChatWidget {
                 is_current: current == MiniGameKind::Snake,
                 actions: vec![Box::new(|tx| {
                     tx.send(AppEvent::UpdateMiniGameKind(MiniGameKind::Snake));
+                })],
+                dismiss_on_select: true,
+                ..Default::default()
+            },
+            SelectionItem {
+                name: "Quit Games".to_string(),
+                description: Some("Close the game and return to the input bar".to_string()),
+                is_current: false,
+                actions: vec![Box::new(|tx| {
+                    tx.send(AppEvent::DismissMiniGame);
                 })],
                 dismiss_on_select: true,
                 ..Default::default()
@@ -8158,6 +8172,12 @@ impl ChatWidget {
             ));
             self.request_redraw();
         }
+    }
+
+    /// Dismiss the active game overlay and return to normal input.
+    pub(crate) fn dismiss_game_overlay(&mut self) {
+        self.game_overlay = None;
+        self.request_redraw();
     }
 
     /// Update mini-games enabled state (called when feature flag is toggled).

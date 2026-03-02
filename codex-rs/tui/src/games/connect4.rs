@@ -15,7 +15,7 @@ use crate::tui::FrameRequester;
 const COLS: usize = 7;
 const ROWS: usize = 6;
 const AI_DELAY: Duration = Duration::from_millis(500);
-const SEARCH_DEPTH: u32 = 10;
+const SEARCH_DEPTH: u32 = 6;
 const MOVE_ORDER: [usize; COLS] = [3, 2, 4, 1, 5, 0, 6];
 const WIN_SCORE: i32 = 100_000;
 

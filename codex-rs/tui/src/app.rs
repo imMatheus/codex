@@ -3165,6 +3165,9 @@ impl App {
                         .add_error_message(format!("Failed to save mini-game selection: {err}"));
                 }
             }
+            AppEvent::DismissMiniGame => {
+                self.chat_widget.dismiss_game_overlay();
+            }
             AppEvent::SyntaxThemeSelected { name } => {
                 let edit = codex_core::config::edit::syntax_theme_edit(&name);
                 let apply_result = ConfigEditsBuilder::new(&self.config.codex_home)

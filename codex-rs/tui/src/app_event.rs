@@ -449,6 +449,9 @@ pub(crate) enum AppEvent {
 
     /// Update the configured mini-game kind and persist to config.
     UpdateMiniGameKind(codex_core::config::types::MiniGameKind),
+
+    /// Dismiss the active mini-game overlay and return to normal input.
+    DismissMiniGame,
 }
 
 /// The exit strategy requested by the UI layer.
